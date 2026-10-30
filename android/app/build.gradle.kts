@@ -27,13 +27,26 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Injected at build time from the MAPS_API_KEY environment variable
+        // (a GitHub Actions secret), so the key never lives in the repo.
+        manifestPlaceholders["MAPS_API_KEY"] = System.getenv("MAPS_API_KEY") ?: ""
+    }
+
+    signingConfigs {
+        // A fixed test key so every APK from CI installs over the previous one.
+        // It is not secret: replace it with a private upload key before
+        // publishing to the Play Store.
+        create("test") {
+            storeFile = file("test-signing.jks")
+            storePassword = "android"
+            keyAlias = "test"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("test")
         }
     }
 }
