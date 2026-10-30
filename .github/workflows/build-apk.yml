@@ -23,9 +23,10 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter test
-      - run: flutter build apk --release --build-number=${{ github.run_number }}
-        env:
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+      - run: >-
+          flutter build apk --release
+          --build-number=${{ github.run_number }}
+          --dart-define=MAPTILER_KEY=${{ secrets.MAPTILER_KEY }}
       - run: cp build/app/outputs/flutter-apk/app-release.apk metro-jatri.apk
       - uses: actions/upload-artifact@v4
         with:

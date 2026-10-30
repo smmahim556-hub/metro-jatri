@@ -1,18 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../data/lines.dart';
 import '../logic/geo.dart';
 import '../logic/schedule.dart';
 import '../logic/tracker.dart';
 import '../util/bangla.dart';
-import 'map_icons.dart';
 
 enum Source { demo, gps }
 
 const _lineColor = Color(0xFF0A7D4F);
+
+/// MapTiler key, passed at build time with --dart-define (a GitHub secret).
+/// Without one the app falls back to the public OpenStreetMap tiles, which
+/// are fine for testing but not for a published app.
+const _mapTilerKey = String.fromEnvironment('MAPTILER_KEY');
 
 class RideScreen extends StatefulWidget {
   const RideScreen({super.key});
@@ -24,9 +29,7 @@ class RideScreen extends StatefulWidget {
 class _RideScreenState extends State<RideScreen> {
   final geo = LineGeometry(mrt6.activeStations);
   late final schedule = Schedule(geo);
-  GoogleMapController? _map;
-  BitmapDescriptor? _myTrainIcon, _otherTrainIcon;
-  List<BitmapDescriptor>? _stationIcons;
+  final map = MapController();
 
   Source source = Source.demo;
   int direction = 1;
@@ -42,7 +45,6 @@ class _RideScreenState extends State<RideScreen> {
   void initState() {
     super.initState();
     _start();
-    _loadIcons();
     // Moves the scheduled trains and refreshes the next-train countdown.
     _clock = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
   }
@@ -68,20 +70,6 @@ class _RideScreenState extends State<RideScreen> {
     setState(() {});
   }
 
-  Future<void> _loadIcons() async {
-    final my = await MapIcons.train(_lineColor);
-    final other = await MapIcons.train(const Color(0xFF6B7772), size: 28);
-    final stations = [
-      for (final s in geo.stations) await MapIcons.station(s.nameBn, _lineColor)
-    ];
-    if (!mounted) return;
-    setState(() {
-      _myTrainIcon = my;
-      _otherTrainIcon = other;
-      _stationIcons = stations;
-    });
-  }
-
   LatLng _latLng(double chainage) {
     final (lat, lon) = geo.pointAt(chainage);
     return LatLng(lat, lon);
@@ -99,7 +87,13 @@ class _RideScreenState extends State<RideScreen> {
             : 'GPS নির্ভুলতা ±${bn((s.accuracy ?? 0).round())} মিটার';
       }
     });
-    if (follow) _map?.moveCamera(CameraUpdate.newLatLng(_latLng(s.chainage)));
+    if (follow) {
+      try {
+        map.move(_latLng(s.chainage), map.camera.zoom);
+      } catch (_) {
+        // The map is not laid out yet on the first event.
+      }
+    }
   }
 
   @override
@@ -109,70 +103,73 @@ class _RideScreenState extends State<RideScreen> {
     final others = schedule.trainsAt(DateTime.now());
 
     return Stack(children: [
-      // Touching the map stops the camera from following the train.
-      Listener(
-        onPointerDown: (_) {
-          if (follow) setState(() => follow = false);
-        },
-        child: GoogleMap(
-          initialCameraPosition:
-              CameraPosition(target: _latLng(state.chainage), zoom: 14),
-          onMapCreated: (c) => _map = c,
-          minMaxZoomPreference: const MinMaxZoomPreference(11, 19),
-          myLocationButtonEnabled: false,
-          zoomControlsEnabled: false,
-          mapToolbarEnabled: false,
-          // Leave room for the bottom sheet and the toggles.
-          padding: EdgeInsets.only(
-              top: 120, bottom: MediaQuery.sizeOf(context).height * 0.3),
-          polylines: {
-            Polyline(
-              polylineId: const PolylineId('casing'),
-              points: [for (final s in st) LatLng(s.lat, s.lon)],
-              color: Colors.white,
-              width: 11,
-              zIndex: 0,
-            ),
-            Polyline(
-              polylineId: const PolylineId('mrt6'),
-              points: [for (final s in st) LatLng(s.lat, s.lon)],
-              color: _lineColor,
-              width: 7,
-              zIndex: 1,
-            ),
-          },
-          markers: {
-            if (_stationIcons != null)
-              for (var i = 0; i < st.length; i++)
-                Marker(
-                  markerId: MarkerId('st$i'),
-                  position: LatLng(st[i].lat, st[i].lon),
-                  icon: _stationIcons![i],
-                  anchor: const Offset(0.5, 0.5),
-                  zIndexInt: 1,
-                  infoWindow: InfoWindow(title: st[i].nameBn, snippet: st[i].nameEn),
-                ),
-            // Other trains, estimated from the timetable.
-            for (var i = 0; i < others.length; i++)
-              Marker(
-                markerId: MarkerId('t$i'),
-                position: _latLng(others[i].chainage),
-                icon: _otherTrainIcon ?? BitmapDescriptor.defaultMarker,
-                anchor: const Offset(0.5, 0.5),
-                zIndexInt: 2,
-                infoWindow: InfoWindow(
-                    title: others[i].direction == 1 ? 'মতিঝিলমুখী ট্রেন' : 'উত্তরামুখী ট্রেন',
-                    snippet: 'সময়সূচি থেকে আনুমানিক অবস্থান'),
-              ),
-            Marker(
-              markerId: const MarkerId('me'),
-              position: _latLng(state.chainage),
-              icon: _myTrainIcon ?? BitmapDescriptor.defaultMarker,
-              anchor: const Offset(0.5, 0.5),
-              zIndexInt: 3,
-            ),
+      FlutterMap(
+        mapController: map,
+        options: MapOptions(
+          initialCenter: _latLng(state.chainage),
+          initialZoom: 14,
+          minZoom: 11,
+          maxZoom: 18,
+          onPositionChanged: (_, hasGesture) {
+            if (hasGesture && follow) setState(() => follow = false);
           },
         ),
+        children: [
+          TileLayer(
+            urlTemplate: _mapTilerKey.isEmpty
+                ? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+                : 'https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}@2x.png?key=$_mapTilerKey',
+            userAgentPackageName: 'com.metrorail.metro_jatri',
+          ),
+          PolylineLayer(polylines: [
+            Polyline(
+              points: [for (final s in st) LatLng(s.lat, s.lon)],
+              color: _lineColor,
+              strokeWidth: 7,
+              borderColor: Colors.white,
+              borderStrokeWidth: 2,
+            ),
+          ]),
+          CircleLayer(circles: [
+            for (final s in st)
+              CircleMarker(
+                point: LatLng(s.lat, s.lon),
+                radius: 7,
+                color: Colors.white,
+                borderColor: _lineColor,
+                borderStrokeWidth: 3,
+              ),
+          ]),
+          MarkerLayer(markers: [
+            for (final s in st)
+              Marker(
+                point: LatLng(s.lat, s.lon),
+                width: 130,
+                height: 24,
+                alignment: const Alignment(1.15, 0),
+                child: _StationLabel(s.nameBn),
+              ),
+            // Other trains, estimated from the timetable.
+            for (final t in others)
+              Marker(
+                point: _latLng(t.chainage),
+                width: 26,
+                height: 26,
+                child: _TrainIcon(
+                    size: 26, color: scheme.outline, tooltip: t.direction == 1 ? 'মতিঝিলমুখী' : 'উত্তরামুখী'),
+              ),
+            Marker(
+              point: _latLng(state.chainage),
+              width: 46,
+              height: 46,
+              child: const _TrainIcon(size: 46, color: _lineColor, highlight: true),
+            ),
+          ]),
+          RichAttributionWidget(attributions: [
+            if (_mapTilerKey.isNotEmpty) const TextSourceAttribution('© MapTiler'),
+            const TextSourceAttribution('© OpenStreetMap contributors'),
+          ]),
+        ],
       ),
       SafeArea(
         child: Padding(
@@ -203,8 +200,7 @@ class _RideScreenState extends State<RideScreen> {
           foregroundColor: follow ? scheme.onPrimary : scheme.primary,
           onPressed: () {
             setState(() => follow = true);
-            _map?.animateCamera(
-                CameraUpdate.newLatLngZoom(_latLng(state.chainage), 15));
+            map.move(_latLng(state.chainage), 15);
           },
           child: const Icon(Icons.my_location),
         ),
@@ -277,6 +273,50 @@ class _Toggles extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TrainIcon extends StatelessWidget {
+  final double size;
+  final Color color;
+  final bool highlight;
+  final String? tooltip;
+  const _TrainIcon(
+      {required this.size, required this.color, this.highlight = false, this.tooltip});
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Container(
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: highlight ? 3 : 2),
+        boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black38)],
+      ),
+      child: Icon(Icons.directions_subway_filled,
+          color: Colors.white, size: size * 0.55),
+    );
+    return tooltip == null ? icon : Tooltip(message: tooltip!, child: icon);
+  }
+}
+
+class _StationLabel extends StatelessWidget {
+  final String name;
+  const _StationLabel(this.name);
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(name,
+              style: const TextStyle(
+                  fontSize: 11, color: Colors.black87, fontWeight: FontWeight.w600)),
+        ),
+      );
 }
 
 class _InfoSheet extends StatelessWidget {

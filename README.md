@@ -30,12 +30,13 @@ flutter test
 
 স্টেশনের স্থানাঙ্ক ও সময়সূচি (পিকে ৮ মিনিট, অন্য সময় ১০ মিনিট, শুক্রবার বিকাল ৩টা থেকে) আনুমানিক। DMTCL-এর অফিসিয়াল ডেটা পেলে `lines.dart` ও `ScheduleConfig` আপডেট করতে হবে।
 
-## Google Maps key
+## ম্যাপ key (MapTiler)
 
-ম্যাপের জন্য Google Maps API key লাগে। key রিপোতে রাখা হয় না:
+ম্যাপ MapTiler থেকে আসে (ফ্রি প্ল্যান, কার্ড লাগে না)। key রিপোতে রাখা হয় না:
 
-- GitHub-এ: রিপোর Settings → Secrets → Actions-এ `MAPS_API_KEY` নামে রাখুন। APK বিল্ডের সময় এটা যোগ হয়।
-- নিজের কম্পিউটারে: `MAPS_API_KEY=... flutter run`
+- GitHub-এ: রিপোর Settings → Secrets → Actions-এ `MAPTILER_KEY` নামে রাখুন। APK বিল্ডের সময় এটা যোগ হয়।
+- নিজের কম্পিউটারে: `flutter run --dart-define=MAPTILER_KEY=...`
+- key না থাকলে অ্যাপ OpenStreetMap-এর পাবলিক ম্যাপ ব্যবহার করে (শুধু টেস্টের জন্য)।
 
 ## APK সাইনিং
 

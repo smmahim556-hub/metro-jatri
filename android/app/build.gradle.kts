@@ -27,9 +27,6 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // Injected at build time from the MAPS_API_KEY environment variable
-        // (a GitHub Actions secret), so the key never lives in the repo.
-        manifestPlaceholders["MAPS_API_KEY"] = System.getenv("MAPS_API_KEY") ?: ""
     }
 
     signingConfigs {
