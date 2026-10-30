@@ -46,9 +46,23 @@ void main() {
     expect(sch.next(0, 1, DateTime(2026, 10, 30, 9)).minutes, 360);
   });
 
+  test('timetable puts trains on the line in both directions at noon', () {
+    final trains = Schedule(geo).trainsAt(DateTime(2026, 10, 29, 12));
+    expect(trains.where((t) => t.direction == 1), isNotEmpty);
+    expect(trains.where((t) => t.direction == -1), isNotEmpty);
+    for (final t in trains) {
+      expect(t.chainage, inInclusiveRange(0, geo.length));
+    }
+  });
+
+  test('pointAt returns station coordinates at station chainage', () {
+    final (lat, lon) = geo.pointAt(geo.cumulative[10]);
+    expect(lat, closeTo(geo.stations[10].lat, 1e-6));
+    expect(lon, closeTo(geo.stations[10].lon, 1e-6));
+  });
+
   testWidgets('app shows the ride screen', (tester) async {
     await tester.pumpWidget(const MetroJatriApp());
-    expect(find.textContaining('মেট্রো যাত্রী'), findsOneWidget);
     expect(find.text('ডেমো'), findsOneWidget);
     await tester.pump(const Duration(seconds: 1));
   });

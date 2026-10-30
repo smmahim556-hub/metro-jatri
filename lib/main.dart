@@ -37,11 +37,10 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: IndexedStack(
-          index: _tab,
-          children: const [RideScreen(), LinesScreen()],
-        ),
+      // The map runs edge to edge; each screen handles its own safe area.
+      body: IndexedStack(
+        index: _tab,
+        children: const [RideScreen(), SafeArea(child: LinesScreen())],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,

@@ -57,6 +57,15 @@ class LineGeometry {
     return best;
   }
 
+  /// Latitude/longitude of the point at [chainage] along the line.
+  (double, double) pointAt(double chainage) {
+    final i = segmentStart(chainage.clamp(0, length));
+    final a = stations[i], b = stations[i + 1];
+    final u = ((chainage - cumulative[i]) / (cumulative[i + 1] - cumulative[i]))
+        .clamp(0.0, 1.0);
+    return (a.lat + (b.lat - a.lat) * u, a.lon + (b.lon - a.lon) * u);
+  }
+
   /// Index of the station nearest to a chainage.
   int nearestStation(double chainage) {
     var n = 0;

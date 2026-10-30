@@ -11,10 +11,14 @@ class RideState {
   final int? from, to;
   final double speedKmh;
   final double remainingMetres;
+
+  /// Distance along the line from the first station, in metres.
+  final double chainage;
   final double? offTrackMetres;
   final double? accuracy;
 
-  const RideState.at(int station, {this.speedKmh = 0, this.offTrackMetres, this.accuracy})
+  const RideState.at(int station,
+      {required this.chainage, this.speedKmh = 0, this.offTrackMetres, this.accuracy})
       : atStation = station,
         from = null,
         to = null,
@@ -23,6 +27,7 @@ class RideState {
   const RideState.between(int this.from, int this.to,
       {required this.speedKmh,
       required this.remainingMetres,
+      required this.chainage,
       this.offTrackMetres,
       this.accuracy})
       : atStation = null;
@@ -61,6 +66,7 @@ class PositionInterpreter {
     final near = geo.nearestStation(pos.chainage);
     if ((geo.cumulative[near] - pos.chainage).abs() < stationRadius) {
       return RideState.at(near,
+          chainage: pos.chainage,
           speedKmh: speed ?? 0, offTrackMetres: pos.offTrack, accuracy: accuracy);
     }
     final a = geo.segmentStart(pos.chainage);
@@ -68,6 +74,7 @@ class PositionInterpreter {
     return RideState.between(f, t,
         speedKmh: speed ?? 0,
         remainingMetres: (geo.cumulative[t] - pos.chainage).abs(),
+        chainage: pos.chainage,
         offTrackMetres: pos.offTrack,
         accuracy: accuracy);
   }
@@ -119,7 +126,7 @@ class DemoTrain {
           _dwelling = false;
         }
       }
-      return RideState.at(at);
+      return RideState.at(at, chainage: geo.cumulative[at]);
     }
     final a = _station(_k), b = _station(_k + 1);
     final d = (geo.cumulative[b] - geo.cumulative[a]).abs();
@@ -127,7 +134,7 @@ class DemoTrain {
       _k++;
       _dwelling = true;
       _t = 0;
-      return RideState.at(b);
+      return RideState.at(b, chainage: geo.cumulative[b]);
     }
     // Integrate the speed profile to find how far the train has gone.
     var x = 0.0, tt = 0.0;
@@ -138,9 +145,12 @@ class DemoTrain {
       tt += step;
     }
     return RideState.between(a, b,
-        speedKmh: profileSpeed(x, d, config) * 3.6, remainingMetres: d - x);
+        speedKmh: profileSpeed(x, d, config) * 3.6,
+        remainingMetres: d - x,
+        chainage: geo.cumulative[a] + direction * x);
   }
 
+  /// Ticks often so the train glides smoothly on the map.
   Stream<RideState> run({double speedUp = 10}) => Stream.periodic(
-      const Duration(milliseconds: 500), (_) => tick(0.5 * speedUp));
+      const Duration(milliseconds: 100), (_) => tick(0.1 * speedUp));
 }

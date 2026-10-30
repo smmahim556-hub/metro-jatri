@@ -73,6 +73,52 @@ class Schedule {
     return t / 60;
   }
 
+  /// Chainage of a train [elapsed] seconds after leaving its origin, or null
+  /// once it has reached the far terminal.
+  double? chainageAfter(double elapsed, int direction) {
+    final n = geo.stations.length;
+    var i = direction == 1 ? 0 : n - 1;
+    var t = elapsed;
+    while (true) {
+      if (t < config.dwellSeconds) return geo.cumulative[i];
+      t -= config.dwellSeconds;
+      final j = i + direction;
+      if (j < 0 || j >= n) return null;
+      final d = (geo.cumulative[j] - geo.cumulative[i]).abs();
+      final run = segmentSeconds(d, config);
+      if (t < run) {
+        // Integrate the speed profile to find the distance covered.
+        var x = 0.0, tt = 0.0;
+        const step = 0.25;
+        while (tt < t && x < d) {
+          x += max(profileSpeed(x, d, config), 0.6) * step;
+          tt += step;
+        }
+        return geo.cumulative[i] + direction * min(x, d);
+      }
+      t -= run;
+      i = j;
+    }
+  }
+
+  /// Estimated positions of every train running at [now].
+  List<({double chainage, int direction})> trainsAt(DateTime now) {
+    final open = now.weekday == DateTime.friday
+        ? config.openFriday
+        : config.openWeekday;
+    final m = now.hour * 60 + now.minute + now.second / 60;
+    final trains = <({double chainage, int direction})>[];
+    for (final dir in const [1, -1]) {
+      for (var dep = open.toDouble();
+          dep <= config.close && dep <= m;
+          dep += headwayAt(dep / 60)) {
+        final c = chainageAfter((m - dep) * 60, dir);
+        if (c != null) trains.add((chainage: c, direction: dir));
+      }
+    }
+    return trains;
+  }
+
   NextTrain next(int station, int direction, DateTime now) {
     final open = now.weekday == DateTime.friday
         ? config.openFriday
